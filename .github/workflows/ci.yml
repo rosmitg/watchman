@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: watchman
+          POSTGRES_PASSWORD: watchman
+          POSTGRES_DB: watchman
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U watchman"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Run tests
+        working-directory: ./backend
+        env:
+          APP_ENV: test
+          SECRET_KEY: test-secret
+          SUPABASE_URL: http://localhost
+          SUPABASE_ANON_KEY: test
+          SUPABASE_SERVICE_ROLE_KEY: test
+          SUPABASE_JWT_SECRET: test
+          DATABASE_URL: postgresql+asyncpg://watchman:watchman@localhost:5432/watchman
+          REDIS_URL: redis://localhost:6379/0
+          ANTHROPIC_API_KEY: test
+          ALPACA_API_KEY: test
+          ALPACA_SECRET_KEY: test
+          ALPACA_BASE_URL: https://paper-api.alpaca.markets
+          NEWS_API_KEY: test
+          PINECONE_API_KEY: test
+          PINECONE_INDEX_NAME: watchman-test
+          VOYAGE_API_KEY: test
+          LANGCHAIN_TRACING_V2: "false"
+          LANGCHAIN_API_KEY: test
+          LANGCHAIN_PROJECT: watchman-test
+          HUGGINGFACE_API_KEY: test
+        run: pytest

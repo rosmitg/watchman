@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# GCP / secrets (ignore json key files, but keep config jsons)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.*.json
+!components.json
+
+# OS
+.DS_Store
+
+# uv
+.uv/
+uv.lock

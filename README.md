@@ -85,6 +85,10 @@ docker compose up --build
 cd backend
 pip install uv
 uv pip install --system -e ".[dev]"
+
+# Apply database migrations before starting the server
+alembic upgrade head
+
 uvicorn app.main:app --reload
 pytest
 ```

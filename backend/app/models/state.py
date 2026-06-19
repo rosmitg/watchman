@@ -69,6 +69,7 @@ class WatchmanState(TypedDict):
     fundamental_findings: list[FundamentalData]
     sentiment_scores: dict[str, float]
     price_movements: list[PriceMove]
+    sec_findings: dict[str, dict]
     brief: Optional[Brief]
     alerts: list[Alert]
     generated_at: Optional[datetime]

@@ -1,0 +1,41 @@
+# Cloud Scheduler job: kicks off daily brief generation at 7am Sydney time.
+#
+# This is a declarative description of the job. Create it with the gcloud command
+# at the bottom (Cloud Scheduler has no native `apply` of this YAML). Replace
+# RUN_URL with the deployed Cloud Run URL, e.g.
+#   https://watchman-backend-abc123-ts.a.run.app
+#
+# NOTE: the OIDC token below authenticates the caller to Cloud Run's IAM layer
+# (run.invoker). It is a Google-signed identity token, NOT a Supabase JWT, so it
+# does not currently satisfy the app's `get_current_user_id` dependency on
+# /api/v1/brief/generate. See infra/gcp/README.md "Scheduler & auth" for the gap
+# and options before relying on this in production.
+
+name: watchman-daily-brief
+description: Generates the daily Watchman portfolio brief every morning.
+schedule: "0 7 * * *"
+timeZone: Australia/Sydney
+httpTarget:
+  uri: https://RUN_URL/api/v1/brief/generate
+  httpMethod: POST
+  headers:
+    Content-Type: application/json
+  oidcToken:
+    serviceAccountEmail: watchman-sa@watchman-gcp.iam.gserviceaccount.com
+    # The audience must match the Cloud Run service base URL.
+    audience: https://RUN_URL
+
+# Equivalent gcloud command (run once, after the service is deployed):
+#
+#   RUN_URL=$(gcloud run services describe watchman-backend \
+#     --region australia-southeast1 --format='value(status.url)')
+#
+#   gcloud scheduler jobs create http watchman-daily-brief \
+#     --location australia-southeast1 \
+#     --schedule "0 7 * * *" \
+#     --time-zone "Australia/Sydney" \
+#     --uri "${RUN_URL}/api/v1/brief/generate" \
+#     --http-method POST \
+#     --headers "Content-Type=application/json" \
+#     --oidc-service-account-email watchman-sa@watchman-gcp.iam.gserviceaccount.com \
+#     --oidc-token-audience "${RUN_URL}"

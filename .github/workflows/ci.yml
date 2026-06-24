@@ -74,3 +74,31 @@ jobs:
           LANGCHAIN_PROJECT: watchman-test
           HUGGINGFACE_API_KEY: test
         run: pytest
+
+  deploy:
+    # Only deploy on direct pushes to main, and only if tests passed.
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write  # required to mint the Workload Identity Federation token
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Trigger Cloud Build to build, push, and deploy via infra/gcp/cloudbuild.yaml.
+      # Pass the commit SHA as the image tag (_TAG); COMMIT_SHA is not auto-set
+      # for `gcloud builds submit`, only for trigger-based builds.
+      - name: Trigger Cloud Build deploy
+        run: gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions=_TAG=${{ github.sha }} .

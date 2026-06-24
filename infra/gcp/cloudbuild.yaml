@@ -1,0 +1,71 @@
+# Cloud Build pipeline for the Watchman backend.
+#
+# Steps: build the backend image -> push to Artifact Registry -> deploy to
+# Cloud Run with secrets wired from Secret Manager.
+#
+# Image tag comes from the _TAG substitution (defaults to "latest"). Callers
+# should pass the commit SHA, e.g.
+#   gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions=_TAG=$(git rev-parse --short HEAD) .
+# (COMMIT_SHA is only auto-populated for trigger-based builds, not for
+# `gcloud builds submit`, so we use a user-defined substitution instead.)
+
+substitutions:
+  _REGION: australia-southeast1
+  _SERVICE: watchman-backend
+  _IMAGE: australia-southeast1-docker.pkg.dev/watchman-500414/watchman/backend
+  _SERVICE_ACCOUNT: watchman-sa@watchman-500414.iam.gserviceaccount.com
+  _CLOUDSQL_INSTANCE: watchman-500414:australia-southeast1:watchman-db
+  _VPC_CONNECTOR: watchman-connector
+  _TAG: latest
+
+steps:
+  # 1. Build the backend image (context = ./backend, which holds the Dockerfile).
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - "${_IMAGE}:${_TAG}"
+      - -t
+      - "${_IMAGE}:latest"
+      - backend
+
+  # 2. Push both tags to Artifact Registry.
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - "${_IMAGE}"
+
+  # 3. Deploy the freshly pushed image to Cloud Run, wiring every env var from
+  #    Secret Manager and attaching the Cloud SQL instance for the Unix socket.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_SERVICE}"
+      - --image=${_IMAGE}:${_TAG}
+      - --region=${_REGION}
+      - --platform=managed
+      - --min-instances=0
+      - --max-instances=2
+      - --memory=1Gi
+      - --cpu=1
+      - --port=8000
+      - --service-account=${_SERVICE_ACCOUNT}
+      - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
+      - --vpc-connector=${_VPC_CONNECTOR}
+      - --vpc-egress=private-ranges-only
+      - --set-env-vars=APP_ENV=production
+      - --allow-unauthenticated
+      - --set-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,NEWS_API_KEY=NEWS_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,VOYAGE_API_KEY=VOYAGE_API_KEY:latest,LANGCHAIN_API_KEY=LANGCHAIN_API_KEY:latest,HUGGINGFACE_API_KEY=HUGGINGFACE_API_KEY:latest
+
+images:
+  - "${_IMAGE}:${_TAG}"
+  - "${_IMAGE}:latest"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

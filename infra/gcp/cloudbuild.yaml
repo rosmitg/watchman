@@ -1,18 +1,22 @@
 # Cloud Build pipeline for the Watchman backend.
 #
-# Triggered by a Cloud Build GitHub trigger on push to main (where $COMMIT_SHA
-# is populated automatically), or via `gcloud builds submit` from a checked-out
-# git working tree (gcloud infers $COMMIT_SHA from git HEAD).
-#
 # Steps: build the backend image -> push to Artifact Registry -> deploy to
 # Cloud Run with secrets wired from Secret Manager.
+#
+# Image tag comes from the _TAG substitution (defaults to "latest"). Callers
+# should pass the commit SHA, e.g.
+#   gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions=_TAG=$(git rev-parse --short HEAD) .
+# (COMMIT_SHA is only auto-populated for trigger-based builds, not for
+# `gcloud builds submit`, so we use a user-defined substitution instead.)
 
 substitutions:
   _REGION: australia-southeast1
   _SERVICE: watchman-backend
-  _IMAGE: australia-southeast1-docker.pkg.dev/watchman-gcp/watchman/backend
-  _SERVICE_ACCOUNT: watchman-sa@watchman-gcp.iam.gserviceaccount.com
-  _CLOUDSQL_INSTANCE: watchman-gcp:australia-southeast1:watchman-db
+  _IMAGE: australia-southeast1-docker.pkg.dev/watchman-500414/watchman/backend
+  _SERVICE_ACCOUNT: watchman-sa@watchman-500414.iam.gserviceaccount.com
+  _CLOUDSQL_INSTANCE: watchman-500414:australia-southeast1:watchman-db
+  _VPC_CONNECTOR: watchman-connector
+  _TAG: latest
 
 steps:
   # 1. Build the backend image (context = ./backend, which holds the Dockerfile).
@@ -21,7 +25,7 @@ steps:
     args:
       - build
       - -t
-      - "${_IMAGE}:${COMMIT_SHA}"
+      - "${_IMAGE}:${_TAG}"
       - -t
       - "${_IMAGE}:latest"
       - backend
@@ -43,7 +47,7 @@ steps:
       - run
       - deploy
       - "${_SERVICE}"
-      - --image=${_IMAGE}:${COMMIT_SHA}
+      - --image=${_IMAGE}:${_TAG}
       - --region=${_REGION}
       - --platform=managed
       - --min-instances=0
@@ -53,11 +57,14 @@ steps:
       - --port=8000
       - --service-account=${_SERVICE_ACCOUNT}
       - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
+      - --vpc-connector=${_VPC_CONNECTOR}
+      - --vpc-egress=private-ranges-only
+      - --set-env-vars=APP_ENV=production
       - --allow-unauthenticated
       - --set-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,NEWS_API_KEY=NEWS_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,VOYAGE_API_KEY=VOYAGE_API_KEY:latest,LANGCHAIN_API_KEY=LANGCHAIN_API_KEY:latest,HUGGINGFACE_API_KEY=HUGGINGFACE_API_KEY:latest
 
 images:
-  - "${_IMAGE}:${COMMIT_SHA}"
+  - "${_IMAGE}:${_TAG}"
   - "${_IMAGE}:latest"
 
 options:

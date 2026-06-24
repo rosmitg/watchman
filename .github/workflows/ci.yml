@@ -98,6 +98,7 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       # Trigger Cloud Build to build, push, and deploy via infra/gcp/cloudbuild.yaml.
-      # gcloud infers $COMMIT_SHA from the checked-out git HEAD.
+      # Pass the commit SHA as the image tag (_TAG); COMMIT_SHA is not auto-set
+      # for `gcloud builds submit`, only for trigger-based builds.
       - name: Trigger Cloud Build deploy
-        run: gcloud builds submit --config infra/gcp/cloudbuild.yaml .
+        run: gcloud builds submit --config infra/gcp/cloudbuild.yaml --substitutions=_TAG=${{ github.sha }} .

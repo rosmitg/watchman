@@ -55,5 +55,14 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.APP_ENV.lower() in ("production", "prod")
 
+    @property
+    def is_cloud_sql(self) -> bool:
+        """True when DATABASE_URL targets a Cloud SQL Unix socket (production).
+
+        Cloud Run mounts the instance socket at /cloudsql/<INSTANCE_CONNECTION_NAME>,
+        so the production DATABASE_URL contains that path rather than a host:port.
+        """
+        return "/cloudsql/" in self.DATABASE_URL
+
 
 settings = Settings()

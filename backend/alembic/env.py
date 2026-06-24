@@ -13,7 +13,9 @@ from app.models.portfolio import Base
 config = context.config
 
 # Override the placeholder URL from alembic.ini with the application setting.
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# Escape % as %% so configparser's interpolation doesn't choke on a
+# percent-encoded password (e.g. %40, %23); it's un-escaped when read back.
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:

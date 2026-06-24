@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, brief, portfolio
+from app.api.routes import auth, brief, portfolio, websocket
 from app.core.config import settings
 
 
@@ -11,6 +11,8 @@ from app.core.config import settings
 async def lifespan(app: FastAPI):
     # Database schema is managed by Alembic; run `alembic upgrade head` before
     # starting the server (see backend/ local dev instructions in the README).
+    # Registry of live alert WebSocket connections, keyed by user_id.
+    app.state.connections = {}
     yield
 
 
@@ -32,6 +34,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(portfolio.router, prefix="/api/v1")
 app.include_router(brief.router, prefix="/api/v1")
+app.include_router(websocket.router)
 
 
 @app.get("/health")

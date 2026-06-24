@@ -18,14 +18,14 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-PROJECT_ID="watchman-gcp"
+PROJECT_ID="watchman-500414"
 REGION="australia-southeast1"
 REPO="watchman"
 SERVICE_ACCOUNT_NAME="watchman-sa"
 SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 SQL_INSTANCE="watchman-db"
 SQL_DATABASE="watchman"
-SQL_TIER="db-f1-micro"
+SQL_TIER="db-g1-small"
 REDIS_INSTANCE="watchman-redis"
 
 # All secrets the Cloud Run service expects (see cloudbuild.yaml --set-secrets).
@@ -107,7 +107,7 @@ done
 
 # ---------------------------------------------------------------------------
 # 5. Cloud SQL: a small Postgres 16 instance for the application database.
-#    db-f1-micro is the cheapest shared-core tier — fine for dev/early prod.
+#    db-g1-small is the cheapest shared-core tier — fine for dev/early prod.
 # ---------------------------------------------------------------------------
 echo "Creating Cloud SQL instance '${SQL_INSTANCE}' (this takes several minutes)..."
 gcloud sql instances create "${SQL_INSTANCE}" \

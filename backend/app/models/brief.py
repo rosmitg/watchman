@@ -18,7 +18,9 @@ class Brief(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
+    # STK's holdings.user_id is varchar(64), so briefs are keyed by the same
+    # string user id (see migration 0003) rather than a UUID.
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     headline: Mapped[str] = mapped_column(String, nullable=False)
     portfolio_health: Mapped[int] = mapped_column(Integer, nullable=False)

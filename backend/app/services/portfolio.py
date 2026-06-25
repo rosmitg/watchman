@@ -1,4 +1,4 @@
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.portfolio import Holding as HoldingModel
@@ -46,21 +46,86 @@ class PortfolioService:
 
         await self.db.commit()
 
-    async def get_holdings(self, user_id: str) -> list[Holding]:
+    async def add_holdings(self, user_id: str, rows: list[dict]) -> None:
+        """Insert or update individual holdings (manual entry / CSV import).
+
+        Unlike :meth:`sync_holdings`, this merges with the existing holdings
+        rather than replacing them; a row whose ticker already exists is updated
+        in place so repeated adds don't create duplicates.
+        """
         portfolio = await self.get_or_create_portfolio(user_id)
 
+        for row in rows:
+            result = await self.db.execute(
+                select(HoldingModel).where(
+                    HoldingModel.portfolio_id == portfolio.id,
+                    HoldingModel.ticker == row["ticker"],
+                )
+            )
+            existing = result.scalar_one_or_none()
+            if existing is not None:
+                existing.qty = row["qty"]
+                existing.avg_entry_price = row["avg_entry_price"]
+            else:
+                self.db.add(
+                    HoldingModel(
+                        portfolio_id=portfolio.id,
+                        ticker=row["ticker"],
+                        qty=row["qty"],
+                        avg_entry_price=row["avg_entry_price"],
+                    )
+                )
+
+        await self.db.commit()
+
+    async def update_holding_prices(
+        self, user_id: str, prices: dict[str, float]
+    ) -> None:
+        """Persist fresh live prices for the user's holdings.
+
+        ``market_value`` is recomputed from the holding's quantity so it stays
+        consistent with the new ``current_price``.
+        """
+        if not prices:
+            return
+
+        portfolio = await self.get_or_create_portfolio(user_id)
         result = await self.db.execute(
             select(HoldingModel).where(HoldingModel.portfolio_id == portfolio.id)
         )
-        rows = result.scalars().all()
+        for holding in result.scalars().all():
+            price = prices.get(holding.ticker)
+            if price is not None:
+                holding.current_price = price
+                holding.market_value = float(holding.qty) * price
+
+        await self.db.commit()
+
+    async def get_holdings(self, user_id: str) -> list[Holding]:
+        """Read the user's holdings directly from STK's shared ``holdings`` table.
+
+        Watchman now shares STK's database. STK keys holdings by a varchar(64)
+        ``user_id`` and stores ``shares``/``avg_cost`` columns, so we map those
+        onto Watchman's ``qty``/``avg_entry_price`` here. STK does not persist a
+        live ``current_price`` or ``market_value`` on the row — the fundamentals
+        agent fetches fresh prices during the brief pipeline — so both default
+        to 0.0.
+        """
+        result = await self.db.execute(
+            text(
+                "SELECT ticker, shares, avg_cost FROM holdings "
+                "WHERE user_id = :user_id ORDER BY ticker"
+            ),
+            {"user_id": user_id},
+        )
 
         return [
             Holding(
-                ticker=h.ticker,
-                qty=float(h.qty),
-                avg_entry_price=float(h.avg_entry_price),
-                current_price=float(h.current_price) if h.current_price is not None else 0.0,
-                market_value=float(h.market_value) if h.market_value is not None else 0.0,
+                ticker=row.ticker,
+                qty=float(row.shares),
+                avg_entry_price=float(row.avg_cost),
+                current_price=0.0,
+                market_value=0.0,
             )
-            for h in rows
+            for row in result
         ]

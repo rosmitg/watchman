@@ -32,14 +32,21 @@ export default function DashboardPage() {
 
   const brief = useBriefStore((s) => s.brief);
   const isLoading = useBriefStore((s) => s.isLoading);
+  const isSyncing = useBriefStore((s) => s.isSyncing);
   const isGenerating = useBriefStore((s) => s.isGenerating);
   const error = useBriefStore((s) => s.error);
+  const syncPortfolio = useBriefStore((s) => s.syncPortfolio);
   const fetchTodayBrief = useBriefStore((s) => s.fetchTodayBrief);
   const generateBrief = useBriefStore((s) => s.generateBrief);
 
   useEffect(() => {
-    fetchTodayBrief();
-  }, [fetchTodayBrief]);
+    // Sync the latest Alpaca holdings before loading the brief so it always
+    // reflects current positions, then fetch today's brief.
+    (async () => {
+      await syncPortfolio();
+      await fetchTodayBrief();
+    })();
+  }, [syncPortfolio, fetchTodayBrief]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -78,8 +85,14 @@ export default function DashboardPage() {
           {/* Left column (2/3): health + headline + sections */}
           <section className="space-y-6 lg:col-span-2">
             <div className="rounded-2xl border border-white/5 bg-[#161a22] p-6">
-              {isLoading ? (
+              {isSyncing || isLoading ? (
                 <div className="flex flex-col gap-4">
+                  {isSyncing && (
+                    <p className="flex items-center gap-2 text-sm text-slate-400">
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/20 border-t-emerald-400" />
+                      Syncing your holdings…
+                    </p>
+                  )}
                   <div className="h-44 animate-pulse rounded-xl bg-white/5" />
                   <div className="h-6 w-3/4 animate-pulse rounded bg-white/5" />
                 </div>

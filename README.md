@@ -8,6 +8,15 @@ news, fundamentals, sentiment, price action, and SEC filings — and surfaces a
 daily brief plus real-time alerts about the things that actually matter to *your*
 portfolio.
 
+## Live
+
+- **Backend API** (Cloud Run): https://watchman-backend-dse7s5vl3a-ts.a.run.app
+  - Health: [`/health`](https://watchman-backend-dse7s5vl3a-ts.a.run.app/health) → `{"status":"ok","env":"production"}`
+- **Frontend**: point `VITE_API_URL` at the backend above and run `npm run dev` (hosted deploy pending).
+
+<!-- Screenshot placeholder — drop the dashboard image at docs/screenshots/dashboard.png -->
+![Watchman dashboard](docs/screenshots/dashboard.png)
+
 ## What it does
 
 - **Syncs your portfolio** from Alpaca (positions, cost basis, market value).
@@ -65,6 +74,25 @@ portfolio.
 | Observability  | LangSmith                                               |
 | Infra          | GCP Cloud Run                                           |
 
+## API
+
+All application endpoints are under `/api/v1` and require a Supabase JWT
+(`Authorization: Bearer <token>`) unless noted. The WebSocket validates the
+token via a `?token=` query param.
+
+| Method | Endpoint                     | Auth | Description                                            |
+| ------ | ---------------------------- | ---- | ------------------------------------------------------ |
+| GET    | `/health`                    | —    | Service health check.                                  |
+| GET    | `/root`                      | —    | Service name + tagline.                                |
+| GET    | `/api/v1/auth/health`        | —    | Auth router health.                                    |
+| GET    | `/api/v1/auth/me`            | ✓    | Current user (decoded JWT claims).                     |
+| GET    | `/api/v1/portfolio/holdings` | ✓    | Holdings for the current user.                         |
+| POST   | `/api/v1/portfolio/sync`     | ✓    | Sync holdings from Alpaca.                             |
+| GET    | `/api/v1/portfolio/summary`  | ✓    | Portfolio totals (market value, count, tickers).       |
+| GET    | `/api/v1/brief/today`        | ✓    | Today's brief (Redis cache → DB → placeholder).        |
+| POST   | `/api/v1/brief/generate`     | ✓    | Run the LangGraph pipeline and return a fresh brief.   |
+| WS     | `/ws/{user_id}?token=…`      | ✓    | Real-time alert stream (Redis pub/sub).                |
+
 ## Local development
 
 ```bash
@@ -105,9 +133,12 @@ pytest
 
 - [x] **Sprint 1 — Core infrastructure**: scaffold, config, LangGraph skeleton,
       health check, CI, docker-compose, ADRs.
-- [ ] **Sprint 2 — Agent implementations**: wire up news, fundamentals,
+- [x] **Sprint 2 — Agent implementations**: wire up news, fundamentals,
       sentiment, SEC, and synthesis agents.
-- [ ] **Sprint 3 — Brief generation & persistence**: PostgreSQL models,
+- [x] **Sprint 3 — Brief generation & persistence**: PostgreSQL models,
       brief storage, Redis caching.
-- [ ] **Sprint 4 — Real-time alerts**: Redis queue, WebSocket push, scheduler.
-- [ ] **Sprint 5 — Frontend**: React dashboard, brief view, live alerts.
+- [x] **Sprint 4 — Real-time alerts**: Redis queue, WebSocket push, scheduler.
+- [x] **Sprint 5 — Frontend**: React dashboard, brief view, live alerts.
+
+> Also shipped: GCP deployment (Cloud Run, Cloud SQL, Memorystore, Secret
+> Manager) with Cloud Build CI/CD — see [`infra/gcp/README.md`](infra/gcp/README.md).

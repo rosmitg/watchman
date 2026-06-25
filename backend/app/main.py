@@ -25,7 +25,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        # Local Vite dev server.
+        "http://localhost:5173",
+        # Production frontend (Cloud Run, nginx/React).
+        "https://watchman-frontend-828211648682.australia-southeast1.run.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -132,8 +132,37 @@ gcloud redis instances create "${REDIS_INSTANCE}" \
   --tier=basic \
   --redis-version=redis_7_0
 
+# ---------------------------------------------------------------------------
+# 7. Cloud Run frontend placeholder.
+#    The real image is built and deployed by Cloud Build (see cloudbuild.yaml),
+#    but we create the service up front with a hello-world image so the URL
+#    exists and IAM/runtime SA wiring is in place. The frontend reuses the same
+#    runtime service account as the backend; it needs no secrets (the backend
+#    API URL is baked into the bundle at build time) and no Cloud SQL/VPC access.
+# ---------------------------------------------------------------------------
+FRONTEND_SERVICE="watchman-frontend"
+echo "Creating Cloud Run frontend placeholder '${FRONTEND_SERVICE}'..."
+if gcloud run services describe "${FRONTEND_SERVICE}" --region="${REGION}" >/dev/null 2>&1; then
+  echo "  ${FRONTEND_SERVICE} already exists, skipping."
+else
+  gcloud run deploy "${FRONTEND_SERVICE}" \
+    --image=gcr.io/cloudrun/hello \
+    --region="${REGION}" \
+    --platform=managed \
+    --port=8080 \
+    --min-instances=0 \
+    --max-instances=2 \
+    --memory=512Mi \
+    --cpu=1 \
+    --service-account="${SERVICE_ACCOUNT_EMAIL}" \
+    --set-env-vars=APP_ENV=production \
+    --allow-unauthenticated
+fi
+
 echo
 echo "Setup complete. Next steps:"
 echo "  1. Populate every secret in Secret Manager with real values (see README)."
 echo "  2. Build the DATABASE_URL and REDIS_URL secrets from the created instances."
 echo "  3. Connect the GitHub repo as a Cloud Build trigger (see README)."
+echo "  4. Push to main (or run Cloud Build) to deploy the real backend and"
+echo "     frontend images over their placeholders."

@@ -1,7 +1,9 @@
-# Cloud Build pipeline for the Watchman backend.
+# Cloud Build pipeline for the Watchman backend and frontend.
 #
 # Steps: build the backend image -> push to Artifact Registry -> deploy to
-# Cloud Run with secrets wired from Secret Manager.
+# Cloud Run with secrets wired from Secret Manager -> build the frontend image
+# (backend URL baked in via VITE_API_URL build arg) -> push -> deploy the
+# nginx/React service to Cloud Run.
 #
 # Image tag comes from the _TAG substitution (defaults to "latest"). Callers
 # should pass the commit SHA, e.g.
@@ -16,6 +18,14 @@ substitutions:
   _SERVICE_ACCOUNT: watchman-sa@watchman-500414.iam.gserviceaccount.com
   _CLOUDSQL_INSTANCE: watchman-500414:australia-southeast1:watchman-db
   _VPC_CONNECTOR: watchman-connector
+  _FRONTEND_SERVICE: watchman-frontend
+  _FRONTEND_IMAGE: australia-southeast1-docker.pkg.dev/watchman-500414/watchman/frontend
+  # Backend Cloud Run URL baked into the frontend bundle at build time.
+  _VITE_API_URL: https://watchman-backend-dse7s5vl3a-ts.a.run.app/api/v1
+  # Supabase config baked into the frontend bundle. The anon key is the public,
+  # browser-safe publishable key (not the service-role key).
+  _VITE_SUPABASE_URL: https://iegzyfommwhlgerxvvtc.supabase.co
+  _VITE_SUPABASE_ANON_KEY: sb_publishable_9_3nmWAQYRdXPKbZczsxuQ_E3k5ue50
   _TAG: latest
 
 steps:
@@ -63,9 +73,58 @@ steps:
       - --allow-unauthenticated
       - --set-secrets=ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_ANON_KEY=SUPABASE_ANON_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,ALPACA_API_KEY=ALPACA_API_KEY:latest,ALPACA_SECRET_KEY=ALPACA_SECRET_KEY:latest,NEWS_API_KEY=NEWS_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,VOYAGE_API_KEY=VOYAGE_API_KEY:latest,LANGCHAIN_API_KEY=LANGCHAIN_API_KEY:latest,HUGGINGFACE_API_KEY=HUGGINGFACE_API_KEY:latest
 
+  # 4. Build the frontend image (context = ./frontend). The backend API URL is
+  #    inlined into the static bundle at build time via the VITE_API_URL arg.
+  - id: build-frontend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - "VITE_API_URL=${_VITE_API_URL}"
+      - --build-arg
+      - "VITE_SUPABASE_URL=${_VITE_SUPABASE_URL}"
+      - --build-arg
+      - "VITE_SUPABASE_ANON_KEY=${_VITE_SUPABASE_ANON_KEY}"
+      - -t
+      - "${_FRONTEND_IMAGE}:${_TAG}"
+      - -t
+      - "${_FRONTEND_IMAGE}:latest"
+      - frontend
+
+  # 5. Push both frontend tags to Artifact Registry.
+  - id: push-frontend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - "${_FRONTEND_IMAGE}"
+
+  # 6. Deploy the frontend to Cloud Run. No secrets — the API URL is baked in;
+  #    nginx serves static files on port 8080.
+  - id: deploy-frontend
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_FRONTEND_SERVICE}"
+      - --image=${_FRONTEND_IMAGE}:${_TAG}
+      - --region=${_REGION}
+      - --platform=managed
+      - --min-instances=0
+      - --max-instances=2
+      - --memory=512Mi
+      - --cpu=1
+      - --port=8080
+      - --service-account=${_SERVICE_ACCOUNT}
+      - --set-env-vars=APP_ENV=production
+      - --allow-unauthenticated
+
 images:
   - "${_IMAGE}:${_TAG}"
   - "${_IMAGE}:latest"
+  - "${_FRONTEND_IMAGE}:${_TAG}"
+  - "${_FRONTEND_IMAGE}:latest"
 
 options:
   logging: CLOUD_LOGGING_ONLY

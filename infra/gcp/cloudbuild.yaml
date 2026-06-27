@@ -16,7 +16,7 @@ substitutions:
   _SERVICE: watchman-backend
   _IMAGE: australia-southeast1-docker.pkg.dev/watchman-500414/watchman/backend
   _SERVICE_ACCOUNT: watchman-sa@watchman-500414.iam.gserviceaccount.com
-  _CLOUDSQL_INSTANCE: watchman-500414:australia-southeast1:watchman-db
+  _CLOUDSQL_INSTANCE: stk-portfolio-assistant-498901:australia-southeast1:stk-portfolio-db
   _VPC_CONNECTOR: watchman-connector
   _FRONTEND_SERVICE: watchman-frontend
   _FRONTEND_IMAGE: australia-southeast1-docker.pkg.dev/watchman-500414/watchman/frontend
@@ -66,7 +66,7 @@ steps:
       - --cpu=1
       - --port=8000
       - --service-account=${_SERVICE_ACCOUNT}
-      - --add-cloudsql-instances=${_CLOUDSQL_INSTANCE}
+      - --set-cloudsql-instances=${_CLOUDSQL_INSTANCE}
       - --vpc-connector=${_VPC_CONNECTOR}
       - --vpc-egress=private-ranges-only
       - --set-env-vars=APP_ENV=production

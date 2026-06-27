@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str = ""
     SUPABASE_JWT_SECRET: str = ""
 
+    # Shared secret for trusted service-to-service calls (e.g. STK's backend
+    # triggering brief generation). When set and presented in the
+    # X-Internal-Secret header, the caller may pass the user_id directly instead
+    # of a Supabase JWT. Empty disables the internal path.
+    INTERNAL_SERVICE_SECRET: str = ""
+
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://watchman:watchman@localhost:5432/watchman"
 

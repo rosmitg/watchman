@@ -9,8 +9,10 @@ import type { Brief } from "@/types";
 interface BriefState {
   brief: Brief | null;
   isLoading: boolean;
+  isSyncing: boolean;
   isGenerating: boolean;
   error: string | null;
+  syncPortfolio: () => Promise<void>;
   fetchTodayBrief: () => Promise<void>;
   generateBrief: () => Promise<void>;
   clearBrief: () => void;
@@ -25,8 +27,22 @@ function errorMessage(err: unknown, fallback: string): string {
 export const useBriefStore = create<BriefState>((set) => ({
   brief: null,
   isLoading: false,
+  isSyncing: false,
   isGenerating: false,
   error: null,
+
+  // Pull the latest holdings from Alpaca so the brief reflects current
+  // positions. Failures are surfaced but non-fatal — the caller still loads
+  // whatever brief exists.
+  syncPortfolio: async () => {
+    set({ isSyncing: true, error: null });
+    try {
+      await api.post("/portfolio/sync");
+      set({ isSyncing: false });
+    } catch (err) {
+      set({ error: errorMessage(err, "Failed to sync holdings"), isSyncing: false });
+    }
+  },
 
   fetchTodayBrief: async () => {
     set({ isLoading: true, error: null });

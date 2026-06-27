@@ -1,16 +1,33 @@
 # Watchman — GCP Deployment
 
-Watchman runs on **Cloud Run** (backend API), backed by **Cloud SQL** (Postgres
+Watchman runs as **two Cloud Run services**, backed by **Cloud SQL** (Postgres
 16), **Memorystore Redis**, **Secret Manager** for configuration, and
 **Cloud Build** for CI/CD. Everything lives in project `watchman-gcp`, region
 `australia-southeast1`.
 
 ```
-GitHub (main) ──► Cloud Build ──► Artifact Registry ──► Cloud Run ──► Cloud SQL
-                                                          │  └──────► Memorystore Redis
-                                                          └────────► Secret Manager
-Cloud Scheduler ──(daily 7am)──► Cloud Run /api/v1/brief/generate
+                                                   ┌─► watchman-frontend (nginx/React)
+GitHub (main) ──► Cloud Build ──► Artifact Registry ┤
+                                                   └─► watchman-backend (FastAPI) ──► Cloud SQL
+                                                                │  └──────────────► Memorystore Redis
+                                                                └─────────────────► Secret Manager
+Cloud Scheduler ──(daily 7am)──► watchman-backend /api/v1/brief/generate
 ```
+
+## Two-service architecture
+
+- **`watchman-frontend`** — the React/Vite single-page app, built to static
+  files and served by **nginx** on port 8080. It has no server-side runtime and
+  no secrets. The backend Cloud Run URL is **baked into the bundle at build
+  time** via the Docker `--build-arg VITE_API_URL=...` (Vite inlines
+  `import.meta.env` at build), so the browser calls the backend directly — nginx
+  does not proxy. Changing the backend URL therefore requires a rebuild, not just
+  a redeploy.
+- **`watchman-backend`** — the FastAPI app on port 8000, wired to Cloud SQL,
+  Memorystore Redis, and Secret Manager, and reachable by Cloud Scheduler.
+
+Both images are built and deployed by the single `cloudbuild.yaml` pipeline and
+share the `watchman-sa` runtime service account.
 
 ## Prerequisites
 

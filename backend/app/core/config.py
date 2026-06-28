@@ -57,6 +57,16 @@ class Settings(BaseSettings):
     # HuggingFace
     HUGGINGFACE_API_KEY: str = ""
 
+    # Resend (transactional email — daily brief delivery)
+    RESEND_API_KEY: str = ""
+
+    # STK's Supabase project. Daily-brief recipients are STK users, whose auth
+    # records live in STK's Supabase project — separate from Watchman's Supabase
+    # above. These resolve a user's email from their user_id (admin users
+    # endpoint needs the service-role key).
+    STK_SUPABASE_URL: str = ""
+    STK_SUPABASE_SERVICE_ROLE_KEY: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.APP_ENV.lower() in ("production", "prod")

@@ -1,9 +1,18 @@
+import logging
 from datetime import datetime, timezone
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.agents.graph import watchman_graph
+from app.core.redis import cache_brief
 from app.models.state import Alert, Brief, Holding, WatchmanState
 from app.services.alert_detector import AlertDetector
 from app.services.alert_service import AlertService
+from app.services.brief import BriefService
+from app.services.email import send_brief_email_for_user
+from app.services.portfolio import PortfolioService
+
+logger = logging.getLogger(__name__)
 
 
 def _dedupe_alerts(alerts: list[Alert]) -> list[Alert]:
@@ -59,3 +68,33 @@ async def run_watchman_pipeline(user_id: str, holdings: list[Holding]) -> Brief 
             await alert_service.aclose()
 
     return final_state.get("brief")
+
+
+async def generate_brief_for_user(
+    user_id: str,
+    db: AsyncSession,
+    *,
+    send_email: bool = True,
+) -> Brief | None:
+    """Generate, persist, cache, and (optionally) email a user's daily brief.
+
+    Shared by the HTTP ``POST /brief/generate`` endpoint and the daily scheduler.
+    Reads the user's holdings, runs the pipeline, upserts the brief, refreshes the
+    cache, then sends the brief email. Returns the saved Brief, or None if the
+    pipeline produced no brief.
+
+    The email step is fire-and-forget (``send_brief_email_for_user`` never raises),
+    so a brief is always saved successfully even if delivery fails.
+    """
+    holdings = await PortfolioService(db).get_holdings(user_id)
+    brief = await run_watchman_pipeline(user_id, holdings)
+    if brief is None:
+        return None
+
+    saved = await BriefService(db).save_brief(brief)
+    await cache_brief(user_id, saved)
+
+    if send_email:
+        await send_brief_email_for_user(user_id, saved)
+
+    return saved

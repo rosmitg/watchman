@@ -10,12 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import bearer_scheme, get_current_user_id
-from app.core.redis import cache_brief, get_cached_brief
+from app.core.redis import get_cached_brief
 from app.core.security import verify_supabase_jwt
 from app.models.state import Brief
 from app.services.brief import BriefService
-from app.services.pipeline import run_watchman_pipeline
-from app.services.portfolio import PortfolioService
+from app.services.pipeline import generate_brief_for_user
 
 router = APIRouter(prefix="/brief", tags=["brief"])
 
@@ -112,15 +111,11 @@ async def generate_brief(
     user_id = _resolve_generate_user_id(
         x_internal_secret, body.user_id if body else None, credentials
     )
-    holdings = await PortfolioService(db).get_holdings(user_id)
 
-    brief = await run_watchman_pipeline(user_id, holdings)
-    if brief is None:
+    saved = await generate_brief_for_user(user_id, db)
+    if saved is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Brief generation failed",
         )
-
-    saved = await BriefService(db).save_brief(brief)
-    await cache_brief(user_id, saved)
     return saved

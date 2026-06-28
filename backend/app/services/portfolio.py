@@ -129,3 +129,14 @@ class PortfolioService:
             )
             for row in result
         ]
+
+    async def get_all_user_ids(self) -> list[str]:
+        """Return every distinct user_id present in STK's shared holdings table.
+
+        Used by the daily scheduler to generate a brief for each user who holds
+        positions.
+        """
+        result = await self.db.execute(
+            text("SELECT DISTINCT user_id FROM holdings ORDER BY user_id")
+        )
+        return [row.user_id for row in result]

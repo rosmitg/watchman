@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import auth, brief, portfolio, websocket
 from app.core.config import settings
+from app.services.scheduler import shutdown_scheduler, start_scheduler
 
 
 @asynccontextmanager
@@ -13,7 +14,12 @@ async def lifespan(app: FastAPI):
     # starting the server (see backend/ local dev instructions in the README).
     # Registry of live alert WebSocket connections, keyed by user_id.
     app.state.connections = {}
-    yield
+    # Daily brief automation (production only; no-op in dev).
+    start_scheduler()
+    try:
+        yield
+    finally:
+        shutdown_scheduler()
 
 
 app = FastAPI(

@@ -58,15 +58,26 @@ async def test_generate_runs_pipeline_and_returns_brief():
     mock_brief_service = MagicMock()
     mock_brief_service.save_brief = AsyncMock(return_value=generated)
 
+    # The route delegates to pipeline.generate_brief_for_user, so patch the
+    # collaborators where they are now used (in app.services.pipeline). Auth on
+    # /generate is via verify_supabase_jwt (not the get_current_user_id
+    # dependency), so stub it to return our test subject.
     try:
         with (
-            patch("app.api.routes.brief.PortfolioService", return_value=mock_portfolio),
-            patch("app.api.routes.brief.BriefService", return_value=mock_brief_service),
             patch(
-                "app.api.routes.brief.run_watchman_pipeline",
+                "app.api.routes.brief.verify_supabase_jwt",
+                return_value={"sub": "user-123"},
+            ),
+            patch("app.services.pipeline.PortfolioService", return_value=mock_portfolio),
+            patch("app.services.pipeline.BriefService", return_value=mock_brief_service),
+            patch(
+                "app.services.pipeline.run_watchman_pipeline",
                 new=AsyncMock(return_value=generated),
             ),
-            patch("app.api.routes.brief.cache_brief", new=AsyncMock()) as mock_cache,
+            patch("app.services.pipeline.cache_brief", new=AsyncMock()) as mock_cache,
+            patch(
+                "app.services.pipeline.send_brief_email_for_user", new=AsyncMock()
+            ) as mock_email,
         ):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -83,3 +94,4 @@ async def test_generate_runs_pipeline_and_returns_brief():
     assert body["portfolio_health"] == 82
     assert body["sections"][0]["title"] == "Market Summary"
     mock_cache.assert_awaited_once()
+    mock_email.assert_awaited_once()

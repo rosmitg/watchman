@@ -60,7 +60,7 @@ steps:
       - --image=${_IMAGE}:${_TAG}
       - --region=${_REGION}
       - --platform=managed
-      - --min-instances=0
+      - --min-instances=1
       - --max-instances=2
       - --memory=1Gi
       - --cpu=1

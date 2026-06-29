@@ -1,144 +1,97 @@
-# Watchman
+# Watchman — Portfolio Intelligence Engine for STK
 
-> Most financial tools answer questions. Watchman asks them first.
+Proactive multi-agent system that monitors your portfolio and delivers personalised daily briefs.
 
-Watchman is an AI-powered **proactive** portfolio intelligence app. Instead of
-waiting for you to look something up, it continuously watches your holdings —
-news, fundamentals, sentiment, price action, and SEC filings — and surfaces a
-daily brief plus real-time alerts about the things that actually matter to *your*
-portfolio.
+**Integration:** Powers the Brief tab in [STK Portfolio Assistant](https://github.com/rosmitg/stk-portfolio-assistant) — https://stk-frontend-512165788990.australia-southeast1.run.app
 
-## Live
-
-- **Backend API** (Cloud Run): https://watchman-backend-dse7s5vl3a-ts.a.run.app
-  - Health: [`/health`](https://watchman-backend-dse7s5vl3a-ts.a.run.app/health) → `{"status":"ok","env":"production"}`
-- **Frontend**: point `VITE_API_URL` at the backend above and run `npm run dev` (hosted deploy pending).
-
-<!-- Screenshot placeholder — drop the dashboard image at docs/screenshots/dashboard.png -->
-![Watchman dashboard](docs/screenshots/dashboard.png)
+---
 
 ## What it does
 
-- **Syncs your portfolio** from Alpaca (positions, cost basis, market value).
-- **Runs a multi-agent LangGraph pipeline** across five specialized agents that
-  share a single typed state.
-- **Generates a daily brief** with a portfolio-health score, themed sections,
-  and ticker-tagged insights, synthesized by Claude.
-- **Pushes time-sensitive alerts** over WebSockets the moment something moves.
-- **Remembers context** via semantic search over news and filings (Pinecone +
-  Voyage AI embeddings).
+Watchman runs on a schedule rather than on request. Each morning it reads every user's holdings from the shared database, runs a five-agent LangGraph pipeline across news, fundamentals, sentiment, and SEC filings, and synthesises the results into a single brief — a portfolio-health score, themed sections, and ticker-tagged insights. The brief is written back to PostgreSQL (where STK reads it) and emailed to the user at **07:00 Australia/Sydney**.
+
+---
+
+## The five agents
+
+Each agent contributes findings to a single typed LangGraph state; the synthesis agent reads that state and writes the final brief.
+
+| Agent | Data source | Purpose |
+|---|---|---|
+| News | NewsAPI | Pulls recent headlines for every held ticker. |
+| Fundamentals | yfinance | Fetches price, valuation, and fundamental metrics per holding. |
+| Sentiment | FinBERT | Scores the tone of each ticker's news flow. |
+| SEC | EDGAR (SEC.gov) | Surfaces recent filings for held companies. |
+| Synthesis | Claude (`claude-sonnet-4-6`) | Merges all findings into a scored, sectioned daily brief. |
+
+---
 
 ## Architecture
 
 ```
-        ┌──────────┐
-        │  Alpaca  │
-        └────┬─────┘
-             │ positions
-             ▼
-     ┌────────────────┐
-     │ Portfolio Sync │
-     └───────┬────────┘
-             │ tickers + holdings
-             ▼
- ┌──────────────────────────────────────────────────────┐
- │              LangGraph Pipeline (5 agents)             │
- │                                                        │
- │   news → fundamentals → sentiment → sec → synthesis    │
- └──────────────────────────┬─────────────────────────────┘
-                            │ Brief + Alerts
-                            ▼
-              ┌───────────────────────────┐
-              │  Redis Queue + PostgreSQL  │
-              └─────────────┬──────────────┘
-                            │ WebSocket Push
-                            ▼
-                  ┌───────────────────┐
-                  │  React Frontend   │
-                  └───────────────────┘
+  ┌─────────────┐   07:00 Australia/Sydney
+  │ APScheduler │───────────────┐
+  └─────────────┘               │
+                                ▼
+                    ┌───────────────────────┐
+                    │   LangGraph Pipeline   │
+                    │                        │
+                    │  News ─┐               │
+                    │  Fund. ─┤              │
+                    │  Sent. ─┼─► Synthesis  │
+                    │  SEC  ─┘               │
+                    └───────────┬────────────┘
+                                │ Brief + Alerts
+                  ┌─────────────┴─────────────┐
+                  ▼                           ▼
+        ┌───────────────────┐       ┌──────────────────┐
+        │  Shared PostgreSQL │       │   Email (Resend) │
+        │  (read by STK)     │       │   daily brief    │
+        └───────────────────┘       └──────────────────┘
 ```
+
+---
 
 ## Tech stack
 
-| Layer          | Technology                                              |
-| -------------- | ------------------------------------------------------- |
-| Frontend       | React, TypeScript, Tailwind, shadcn/ui, Vite, Zustand   |
-| Backend        | FastAPI, Python 3.11, uv                                 |
-| Agents         | LangGraph                                               |
-| LLM            | Claude (`claude-sonnet-4-6`)                             |
-| Auth           | Supabase                                                |
-| Database       | PostgreSQL (Cloud SQL)                                  |
-| Cache          | Redis (GCP Memorystore)                                 |
-| Vector         | Pinecone + Voyage AI                                    |
-| Scheduling     | APScheduler + Cloud Scheduler                          |
-| Observability  | LangSmith                                               |
-| Infra          | GCP Cloud Run                                           |
+| Layer | Technology |
+|---|---|
+| Agents | LangGraph |
+| LLM | Claude API (`claude-sonnet-4-6`) |
+| Backend | FastAPI, Python 3.11 |
+| Cache / queue | Redis (GCP Memorystore) |
+| Vector | Pinecone + Voyage AI |
+| Scheduling | APScheduler + Cloud Scheduler |
+| Email | Resend |
+| Infra | GCP Cloud Run |
 
-## API
+---
 
-All application endpoints are under `/api/v1` and require a Supabase JWT
-(`Authorization: Bearer <token>`) unless noted. The WebSocket validates the
-token via a `?token=` query param.
+## Deployment
 
-| Method | Endpoint                     | Auth | Description                                            |
-| ------ | ---------------------------- | ---- | ------------------------------------------------------ |
-| GET    | `/health`                    | —    | Service health check.                                  |
-| GET    | `/root`                      | —    | Service name + tagline.                                |
-| GET    | `/api/v1/auth/health`        | —    | Auth router health.                                    |
-| GET    | `/api/v1/auth/me`            | ✓    | Current user (decoded JWT claims).                     |
-| GET    | `/api/v1/portfolio/holdings` | ✓    | Holdings for the current user.                         |
-| POST   | `/api/v1/portfolio/sync`     | ✓    | Sync holdings from Alpaca.                             |
-| GET    | `/api/v1/portfolio/summary`  | ✓    | Portfolio totals (market value, count, tickers).       |
-| GET    | `/api/v1/brief/today`        | ✓    | Today's brief (Redis cache → DB → placeholder).        |
-| POST   | `/api/v1/brief/generate`     | ✓    | Run the LangGraph pipeline and return a fresh brief.   |
-| WS     | `/ws/{user_id}?token=…`      | ✓    | Real-time alert stream (Redis pub/sub).                |
+Watchman runs on **GCP Cloud Run**, triggered daily by **Cloud Scheduler** (with an in-process APScheduler cron as the timing backbone). It shares a single **PostgreSQL (Cloud SQL)** instance with STK — Watchman reads holdings and writes briefs; STK serves those briefs through its Brief tab. Secrets are managed in Secret Manager, and the daily brief is delivered by email via Resend.
+
+---
 
 ## Local development
 
 ```bash
-# 1. Configure environment
-cp backend/.env.example backend/.env
-# edit backend/.env with your keys
-
-# 2. Bring up the stack (postgres + redis + backend)
-docker compose up --build
-
-# Backend is now on http://localhost:8000
-#   GET /health  -> {"status": "ok", "env": "development"}
+cp backend/.env.example backend/.env   # add your keys
+docker compose up --build              # postgres + redis + backend
+# Backend on http://localhost:8000  →  GET /health
 ```
 
-### Running the backend without Docker
+Without Docker:
 
 ```bash
 cd backend
 pip install uv
 uv pip install --system -e ".[dev]"
-
-# Apply database migrations before starting the server
 alembic upgrade head
-
 uvicorn app.main:app --reload
 pytest
 ```
 
-## Architecture Decision Records
+---
 
-- [ADR 001 — LangGraph over CrewAI](docs/adr/001-langgraph-over-crewai.md)
-- [ADR 002 — Redis alert queue & brief cache](docs/adr/002-redis-alert-queue.md)
-- [ADR 003 — WebSockets over polling](docs/adr/003-websockets-over-polling.md)
-- [ADR 004 — Pinecone over ChromaDB](docs/adr/004-pinecone-over-chromadb.md)
-- [ADR 005 — shadcn/ui over raw Tailwind](docs/adr/005-shadcn-over-raw-tailwind.md)
-
-## Sprint progress
-
-- [x] **Sprint 1 — Core infrastructure**: scaffold, config, LangGraph skeleton,
-      health check, CI, docker-compose, ADRs.
-- [x] **Sprint 2 — Agent implementations**: wire up news, fundamentals,
-      sentiment, SEC, and synthesis agents.
-- [x] **Sprint 3 — Brief generation & persistence**: PostgreSQL models,
-      brief storage, Redis caching.
-- [x] **Sprint 4 — Real-time alerts**: Redis queue, WebSocket push, scheduler.
-- [x] **Sprint 5 — Frontend**: React dashboard, brief view, live alerts.
-
-> Also shipped: GCP deployment (Cloud Run, Cloud SQL, Memorystore, Secret
-> Manager) with Cloud Build CI/CD — see [`infra/gcp/README.md`](infra/gcp/README.md).
+> Part of the STK ecosystem — see [github.com/rosmitg/stk-portfolio-assistant](https://github.com/rosmitg/stk-portfolio-assistant).

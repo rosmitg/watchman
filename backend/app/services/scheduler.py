@@ -107,7 +107,7 @@ def start_scheduler() -> None:
     )
     scheduler.start()
     _scheduler = scheduler
-    logger.info("Scheduler started: daily briefs at 07:00 Australia/Sydney")
+    logger.info("APScheduler started — next brief run at 07:00 Australia/Sydney")
 
 
 def shutdown_scheduler() -> None:

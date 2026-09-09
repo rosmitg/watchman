@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,6 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, brief, portfolio, websocket
 from app.core.config import settings
 from app.services.scheduler import shutdown_scheduler, start_scheduler
+
+# Bare `uvicorn` only configures its own loggers, so app-level INFO logs would
+# otherwise be dropped (no root handler). Configure root at INFO so module logs
+# (e.g. the scheduler startup line) reach Cloud Run's stdout. uvicorn's loggers
+# don't propagate to root, so this won't duplicate its access/error logs.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 
 
 @asynccontextmanager
